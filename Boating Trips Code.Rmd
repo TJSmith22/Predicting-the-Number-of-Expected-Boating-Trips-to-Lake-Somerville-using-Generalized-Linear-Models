@@ -1,0 +1,259 @@
+---
+title: Predicting the Number of Expected Boating Trips to Lake Somerville using Generalized
+  Linear Models
+author: "TJ Smith"
+output:
+  word_document: default
+  html_document: default
+---
+
+# Import needed packages
+```{r,include=FALSE}
+library(tidyverse)
+library(GLMsData)
+library(MASS)
+library(gridExtra)
+library(statmod)
+```
+
+# Loading in data set
+```{r,include=FALSE}
+rec <- read.csv("rec-trips.csv")
+```
+
+# Calculating proportions for target variable values (limited from 0-25)
+# Put proportions into a table
+```{r,include=FALSE}
+tbl <- table(rec$TRIPS)
+pp <- tbl / sum(tbl)
+dftrips <- data.frame(TRIPS = as.numeric(names(tbl)),
+                 freq.TRIPS = as.numeric(pp))
+names(dftrips) <- c("Trips", "freq.Trips")
+pp <- pp[as.character(0:25)]
+round(pp, 4)
+```
+
+```{r}
+pp <- pp[as.character(0)]
+round(pp, 4)
+```
+
+# Graphing number of trips to Lake Somerville vs proportion of data
+```{r}
+p <- ggplot(data=dftrips,mapping=aes(x=Trips,
+                                y=freq.Trips))+xlim(0,25)
+p <- p + geom_line(col = "gray")
+p <- p + geom_point()
+p <- p + labs(x = "Number of Trips",
+              y = "Proportion")
+p
+```
+
+#Graph summary of the SO variable
+```{r}
+p <- ggplot(data = rec,
+            mapping = aes(x = as.factor(SO),
+                          y = TRIPS)) +ylim(0,15)
+p <- p + geom_boxplot()
+p <- p + labs(x = "SO",
+              y = "Trips",
+              title = "")
+p
+```
+
+# Distribution of the C3 variable compared to Target variable
+```{r}
+p <- ggplot(data = rec,
+            mapping = aes(x = C3,
+                          y = TRIPS)) +xlim(0,100)
+p <- p + geom_point(pch = 1)
+p <- p + geom_smooth(se=FALSE)
+p <- p + labs(x = "Dollar expenditure when visiting Lake Somerville",
+              y = "Number of Trips")
+p
+```
+
+# Splitting SO variable into seperate variables based on their value
+```{r,include=FALSE}
+rec$SO0 = ifelse(rec$SO == "0",1,0)
+rec$SO1 = ifelse(rec$SO == "1",1,0)
+rec$SO2 = ifelse(rec$SO == "2",1,0)
+rec$SO3 = ifelse(rec$SO == "3",1,0)
+rec$SO4 = ifelse(rec$SO == "4",1,0)
+rec$SO5 = ifelse(rec$SO == "5",1,0)
+```
+
+# Final Poisson model
+```{r}
+mi = glm(TRIPS ~ -1+SO0+SO1+SO2+SO3+SO4+SO5+C3,
+         data=rec,family=poisson(link="log"))
+summary(mi)
+deviance(mi) / df.residual(mi)
+```
+
+# Final negative binomial model
+```{r}
+m0 = glm.nb(TRIPS ~ -1+SO0+SO1+SO2+SO3+SO4+SO5+C3+I+FC3+SKI,
+         data=rec)
+summary(m0)
+```
+
+# Calculating necesarry columns/values for model analysis
+```{r,include=FALSE}
+rec$m0.mu <- predict(m0, type = "response")
+rec$m0.eta <- predict(m0, type = "link")
+rec$m0.rW <- resid(m0, type = "working")
+rec$m0.wR <- rec$m0.eta + rec$m0.rW
+rec$m0.rD <- resid(m0, type = "deviance")
+rec$m0.rQ <- qresid(m0)
+```
+
+# Overall model accuracy predictor
+```{r}
+p <- ggplot(data = rec,
+            mapping = aes(x = m0.mu,
+                          y = m0.rQ))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Negative Binomial Model")
+p
+```
+
+# Out-of-model variable analysis
+```{r}
+p <- ggplot(data = rec,
+            mapping = aes(x = C1,
+                          y = m0.rQ))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "C1",
+              y = "Quantile Residuals",
+              title = "Negative Binomial Model")
+p
+p <- ggplot(data = rec,
+            mapping = aes(x = C4,
+                          y = m0.rQ))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "C4",
+              y = "Quantile Residuals",
+              title = "Negative Binomial Model")
+p
+```
+
+# In-model variable analysis
+```{r}
+p <- ggplot(data = rec,
+            mapping = aes(x = C3,
+                          y = m0.rQ))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "C3",
+              y = "Quantile Residuals",
+              title = "Negative Binomial Model")
+p
+p <- ggplot(data = rec,
+            mapping = aes(x = as.factor(SO),
+                          y = m0.rQ))
+p <- p + geom_boxplot()
+p <- p + labs(x = "SO",
+              y = "Quantile Residuals",
+              title = "Negative Binomial Model")
+p
+```
+
+# Link function accuracy test
+```{r}
+p <- ggplot(data = rec,
+            mapping = aes(x = m0.eta,
+                          y = m0.wR))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Linear Predictor",
+              y = "Working Responses",
+              title = "Negative Binomial Model")
+p
+p <- ggplot(data = rec,
+            mapping = aes(x = m0.eta,
+                          y = m0.wR))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Linear Predictor",
+              y = "Working Responses",
+              title = "Negative Binomial Model")
+p
+```
+
+# Function Family test (Is negative binomial the right choice?)
+```{r}
+pt <- ggplot(data = rec,
+            mapping = aes(sample = m0.rQ))
+pt <- pt + geom_qq(pch = 1) + geom_qq_line(color = "blue")
+pt <- pt + labs(x = "Theoretical Quantiles",
+              y = "Sample Quantiles")
+pt
+```
+
+# Final numerical model
+$$
+log(\mu) = -2.355(SO0) + 1.482(SO1)+2.306(SO2)+1.90(SO3)+2.413(SO4)+2.211(SO5)-.008(C3)-.008(I)+1.040(FC3)+.606(SKI)
+$$
+
+# Calculating proportions for target variable values (limited from 0-25)
+# Put proportions into a table
+```{r,include=FALSE}
+tbl <- table(rec$TRIPS)
+pp <- tbl / sum(tbl)
+dftrips <- data.frame(TRIPS = as.numeric(names(tbl)),
+                 freq.TRIPS = as.numeric(pp))
+names(dftrips) <- c("Trips", "freq.Trips")
+pp <- pp[as.character(0:25)]
+round(pp, 4)
+```
+
+# Poisson function probability calculation
+```{r,md-def-poisson-prob, include=FALSE}
+f <- function(mu, k){
+  prob <- exp(-mu)*mu^k/factorial(k)
+  ans <- mean(prob)
+  return(ans)
+}
+```
+
+# Calculating expected probaility from Poisson model
+```{r,md-pm.1-calc-expected-probs, include=FALSE}
+rec$mi.mu <- predict(mi, type = "response")
+pr <- apply(data.frame(TRIPS = 0:25),
+            1, function(k) f(rec$mi.mu, k))
+tbl <- data.frame("TRIPS" = 0:25,
+                  "Actual" = as.numeric(pp), 
+                  "Expected" = as.numeric(pr))
+round(tbl, 3)
+```
+
+# Calculating expected probaility from neg. binomial model
+```{r,md-nb1-calc-expected-probs, include=FALSE}
+tmp <- apply(data.frame("TRIPS" = 0:25),
+      1, function(k) mean(dnbinom(k, mu = rec$m0.mu, size = 1)))
+tbl$Exp.NB <- tmp
+round(tbl,3)
+```
+
+# Plot showing the actual data vs the negative binomial and Poisson model
+```{r,md-plot-probs-both-models}
+p <- ggplot(data = tbl,
+            mapping = aes(x = TRIPS,
+                          y = Actual))
+p <- p + geom_line() + geom_point()
+p <- p + geom_line(aes(y = Expected),
+                   color = "red") + 
+  geom_point(aes(y = Expected),
+             color = "red")
+p <- p + geom_line(aes(y = Exp.NB),
+                   color = "blue") + 
+  geom_point(aes(y = Exp.NB),
+             color = "blue")
+p <- p + annotate("text", x = c(20,20,20), y = c(0.6, 0.5,.4),
+                  label = c("Actual", "Poisson","Negative Binomial"),
+                  color = c("black", "red","blue"))
+p <- p + labs(x = "Number of Trips",
+          y = "Probability")
+p
+```
+
